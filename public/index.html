@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chat App</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    body {
+      font-family: 'Helvetica', 'Arial', sans-serif;
+      background-color: #f0f0f0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    #chat-container {
+      width: 90%;
+      max-width: 600px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      height: 80vh;
+      overflow: hidden;
+    }
+    #messages {
+      list-style-type: none;
+      padding: 20px;
+      margin: 0;
+      flex-grow: 1;
+      overflow-y: auto;
+      background: #fafafa;
+    }
+    #messages li {
+      margin-bottom: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      max-width: 100%;
+    }
+    #messages .self {
+      align-items: flex-end;
+    }
+    .message {
+      padding: 10px 15px;
+      border-radius: 20px;
+      max-width: 80%;
+      word-wrap: break-word;
+      background: #e4e6eb;
+    }
+    #messages .self .message {
+      background: #5bc0de;
+      color: white;
+      align-self: flex-end;
+    }
+    .username {
+      font-size: 0.8em;
+      margin-bottom: 5px;
+      color: #555;
+    }
+    .notification {
+      font-style: italic;
+      color: #888;
+    }
+    #form {
+      display: flex;
+      padding: 10px;
+      background: #eee;
+      border-top: 1px solid #ccc;
+    }
+    #input {
+      border: none;
+      padding: 10px;
+      flex-grow: 1;
+      border-radius: 20px;
+      margin-right: 10px;
+      font-size: 16px;
+    }
+    #input:focus {
+      outline: none;
+    }
+    #send {
+      background: #5bc0de;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 20px;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #send:hover {
+      background: #48a5c6;
+    }
+    #username-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+    }
+    #username-container input {
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+    #username-container button {
+      background: #5bc0de;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #username-container button:hover {
+      background: #48a5c6;
+    }
+    #fileButton {
+      background: #5bc0de;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 20px;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    #fileButton:hover {
+      background: #48a5c6;
+    }
+    
+  </style>
+</head>
+<body>
+  <div id="username-container">
+    <input id="username-input" type="text" placeholder="Enter your name" />
+    <button id="username-button">Start Chatting</button>
+  </div>
+  <div id="chat-container" style="display: none;">
+    <ul id="messages"></ul>
+    <form id="form" action="">
+      <input id="input" autocomplete="off" placeholder="Type your message..." />
+      <input type="file" id="fileInput" style="display:none;" />
+      <button id="send"><i class="fas fa-paper-plane"></i></button>
+      <button type="button" id="fileButton"><i class="fas fa-paperclip"></i></button>
+    </form>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const form = document.getElementById('form');
+    const input = document.getElementById('input');
+    const messages = document.getElementById('messages');
+    const usernameContainer = document.getElementById('username-container');
+    const usernameInput = document.getElementById('username-input');
+    const usernameButton = document.getElementById('username-button');
+    const chatContainer = document.getElementById('chat-container');
+    const fileInput = document.getElementById('fileInput');
+    const fileButton = document.getElementById('fileButton');
+
+    let username = '';
+
+    usernameButton.addEventListener('click', () => {
+      username = usernameInput.value.trim();
+      if (username) {
+        usernameContainer.style.display = 'none';
+        chatContainer.style.display = 'flex';
+        socket.emit('user joined', username);
+      }
+    });
+
+    fileButton.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const fileData = e.target.result;
+          const fileName = file.name;
+
+          // Display the file in the sender's chat window
+          addFileMessage(username, fileName, fileData, 'self');
+
+          // Emit the file to the server
+          socket.emit('file upload', { username, fileName, fileData });
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (input.value) {
+        // Display the message in the sender's chat window
+        addMessage(username, input.value, 'self');
+
+        // Emit the message to the server
+        socket.emit('chat message', { username, message: input.value });
+        input.value = '';
+      }
+    });
+
+    // Listen for chat messages from the server
+    socket.on('chat message', ({ username, message }) => {
+      addMessage(username, message, 'other');
+    });
+
+    // Listen for file uploads from the server
+    socket.on('file upload', ({ username, fileName, fileData }) => {
+      addFileMessage(username, fileName, fileData, 'other');
+    });
+
+    // Listen for user joined notifications from the server
+    socket.on('user joined', (username) => {
+      addNotification(`${username} has joined the chat`);
+    });
+
+    // Function to add a message to the chat window
+    function addMessage(username, message, type) {
+      const item = document.createElement('li');
+      const usernameDiv = document.createElement('div');
+      const messageDiv = document.createElement('div');
+
+      usernameDiv.textContent = username;
+      usernameDiv.className = 'username';
+      messageDiv.textContent = message;
+      messageDiv.className = 'message';
+
+      item.className = type;
+      item.appendChild(usernameDiv);
+      item.appendChild(messageDiv);
+
+      messages.appendChild(item);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    // Function to add a file message to the chat window
+    function addFileMessage(username, fileName, fileData, type) {
+      const item = document.createElement('li');
+      const usernameDiv = document.createElement('div');
+      let fileContent;
+
+      usernameDiv.textContent = username;
+      usernameDiv.className = 'username';
+
+      if (fileData.startsWith('data:image/')) {
+        // If the file is an image, display it
+        fileContent = document.createElement('img');
+        fileContent.src = fileData;
+        fileContent.className = 'message';
+        fileContent.style.maxWidth = '80%';
+        fileContent.style.borderRadius = '20px';
+      } else {
+        // For other file types, create a download link
+        fileContent = document.createElement('a');
+        fileContent.href = fileData;
+        fileContent.textContent = fileName;
+        fileContent.className = 'message';
+        fileContent.download = fileName;
+        fileContent.target = '_blank';
+      }
+
+      item.className = type;
+      item.appendChild(usernameDiv);
+      item.appendChild(fileContent);
+
+      messages.appendChild(item);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    // Function to add a notification to the chat window
+    function addNotification(notification) {
+      const item = document.createElement('li');
+      item.textContent = notification;
+      item.className = 'notification';
+      messages.appendChild(item);
+      messages.scrollTop = messages.scrollHeight;
+    }
+  </script>
+</body>
+</html>
